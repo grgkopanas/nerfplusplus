@@ -19,7 +19,10 @@ def parse_tracks(colmap_images, colmap_points3D):
 
         cur_track = {}
         cur_track['xyz'] = (point3D.xyz[0], point3D.xyz[1], point3D.xyz[2])
-        cur_track['err'] = point3D.error.item()
+        try:
+            cur_track['err'] = point3D.error.item()
+        except:
+            cur_track['err'] = point3D.error
 
         cur_track_len = len(image_ids)
         assert (cur_track_len == len(point2D_idxs))
