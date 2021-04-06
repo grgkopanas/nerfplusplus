@@ -14,7 +14,7 @@ from tensorboardX import SummaryWriter
 from utils import img2mse, mse2psnr, img_HWC2CHW, colorize, TINY_NUMBER
 import logging
 import json
-
+import random
 
 logger = logging.getLogger(__package__)
 
@@ -274,7 +274,7 @@ def setup(rank, world_size):
     os.environ['MASTER_ADDR'] = 'localhost'
     # port = np.random.randint(12355, 12399)
     # os.environ['MASTER_PORT'] = '{}'.format(port)
-    os.environ['MASTER_PORT'] = '12355'
+    os.environ['MASTER_PORT'] = str(random.randint(10000, 99999))
     # initialize the process group
     torch.distributed.init_process_group("gloo", rank=rank, world_size=world_size)
 
@@ -484,14 +484,15 @@ def ddp_train_nerf(rank, args):
         ### each process should do this; but only main process merges the results
         if global_step % args.i_img == 0 or global_step == start+1:
             #### critical: make sure each process is working on the same random image
-            time0 = time.time()
-            idx = what_val_to_log % len(val_ray_samplers)
-            log_data = render_single_image(rank, args.world_size, models, val_ray_samplers[idx], args.chunk_size)
-            what_val_to_log += 1
-            dt = time.time() - time0
-            if rank == 0:    # only main process should do this
-                logger.info('Logged a random validation view in {} seconds'.format(dt))
-                log_view_to_tb(writer, global_step, log_data, gt_img=val_ray_samplers[idx].get_img(), mask=None, prefix='val/')
+            if len(val_ray_samplers)!=0:
+                time0 = time.time()
+                idx = what_val_to_log % len(val_ray_samplers)
+                log_data = render_single_image(rank, args.world_size, models, val_ray_samplers[idx], args.chunk_size)
+                what_val_to_log += 1
+                dt = time.time() - time0
+                if rank == 0:    # only main process should do this
+                    logger.info('Logged a random validation view in {} seconds'.format(dt))
+                    log_view_to_tb(writer, global_step, log_data, gt_img=val_ray_samplers[idx].get_img(), mask=None, prefix='val/')
 
             time0 = time.time()
             idx = what_train_to_log % len(ray_samplers)
