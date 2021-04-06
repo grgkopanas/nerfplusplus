@@ -1,7 +1,15 @@
 import numpy as np
 import json
 import copy
+import os
 
+
+def transform_pose(W2C, translate, scale):
+    C2W = np.linalg.inv(W2C)
+    cam_center = C2W[:3, 3]
+    cam_center = (cam_center + translate) * scale
+    C2W[:3, 3] = cam_center
+    return np.linalg.inv(C2W)
 
 def get_tf_cams(cam_dict, target_radius=1.):
     cam_centers = []
@@ -33,14 +41,8 @@ def normalize_cam_dict(in_cam_dict_file, out_cam_dict_file, target_radius=1.):
 
     translate, scale = get_tf_cams(in_cam_dict, target_radius=target_radius)
 
-    def transform_pose(W2C, translate, scale):
-        C2W = np.linalg.inv(W2C)
-        cam_center = C2W[:3, 3]
-        cam_center = (cam_center + translate) * scale
-        C2W[:3, 3] = cam_center
-        return np.linalg.inv(C2W)
-
     out_cam_dict = copy.deepcopy(in_cam_dict)
+    transform_dict = {"translate": list(translate.flatten()), "scale": scale}
     for img_name in out_cam_dict:
         W2C = np.array(out_cam_dict[img_name]['W2C']).reshape((4, 4))
         W2C = transform_pose(W2C, translate, scale)
@@ -49,6 +51,9 @@ def normalize_cam_dict(in_cam_dict_file, out_cam_dict_file, target_radius=1.):
 
     with open(out_cam_dict_file, 'w') as fp:
         json.dump(out_cam_dict, fp, indent=2, sort_keys=True)
+    transform_file = os.path.join(os.path.dirname(out_cam_dict_file), "norm_transform.json")
+    with open(transform_file, 'w') as fp:
+        json.dump(transform_dict, fp, indent=2, sort_keys=True)
 
 
 if __name__ == '__main__':

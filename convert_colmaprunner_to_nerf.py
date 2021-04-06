@@ -17,10 +17,32 @@ def mkdir_p(folder_path):
         else:
             raise
 
-def convert_colmaprunner_to_nerf(scene_folder):
-    json_cameras = os.path.join(scene_folder, "posed_images", "kai_cameras_normalized.json")
-    output_folder = os.path.join(scene_folder, "nerfscene")
-    images_folder = os.path.join(scene_folder, "posed_images", "images")
+def make_nerf_folder(cams_dict, folder, in_rgbs=None):
+    intrinsic_folder = os.path.join(folder, "intrinsics")
+    mkdir_p(intrinsic_folder)
+    pose_folder = os.path.join(folder, "pose")
+    mkdir_p(pose_folder)
+    if in_rgbs:
+        rgb_folder = os.path.join(folder, "rgb")
+        mkdir_p(rgb_folder)
+    for idx, packed in enumerate(cams_dict.items()):
+        cam_name, cam = packed
+        with open(os.path.join(intrinsic_folder, format(idx, '05d')+ ".txt"), 'w') as f:
+            for k in cam["K"]:
+                f.write(str(k) + " ")
+
+        W2C = np.array(cam["W2C"]).reshape((4,4))
+        C2W = np.linalg.inv(W2C)
+        with open(os.path.join(pose_folder, format(idx, '05d') + ".txt"), 'w') as f:
+            for k in C2W.flatten():
+                f.write(str(k) + " ")
+        if in_rgbs:
+            shutil.copyfile(os.path.join(in_rgbs, cam_name),
+                            os.path.join(rgb_folder, format(idx, '05d') + "." + cam_name.split(".")[-1]))
+
+def convert_colmaprunner_to_nerf(input_folder, output_folder, val, test):
+    json_cameras = os.path.join(input_folder, "kai_cameras_normalized.json")
+    images_folder = os.path.join(input_folder, "images")
 
     fp = open(json_cameras)
     in_cam_dict = json.load(fp)
@@ -29,41 +51,22 @@ def convert_colmaprunner_to_nerf(scene_folder):
     in_cam_dict_keys = list(in_cam_dict.keys())
     random.shuffle(in_cam_dict_keys)
 
-    test_keys = in_cam_dict_keys[:2]
-    valid_keys = in_cam_dict_keys[2:4]
-    train_keys = in_cam_dict_keys[4:]
+    test_dict = {cam_name: in_cam_dict[cam_name] for cam_name in in_cam_dict_keys[:test]}
+    valid_dict = {cam_name: in_cam_dict[cam_name] for cam_name in in_cam_dict_keys[test:test+val]}
+    train_dict = {cam_name: in_cam_dict[cam_name] for cam_name in in_cam_dict_keys[test+val:]}
 
-    for idx, cam_name in enumerate(in_cam_dict_keys):
-        folder = None
-        if cam_name in test_keys:
-            folder = "test"
-        elif cam_name in valid_keys:
-            folder = "validation"
-        elif cam_name in train_keys:
-            folder = "train"
-        else:
-            print("Camera {} not found".format(cam_name))
-            exit(-1)
-        nerfscene_folder = os.path.join(output_folder, folder)
-        intrinsic_folder = os.path.join(nerfscene_folder, "intrinsics")
-        pose_folder = os.path.join(nerfscene_folder, "pose")
-        rgb_folder = os.path.join(nerfscene_folder, "rgb")
-        mkdir_p(nerfscene_folder)
-        mkdir_p(intrinsic_folder)
-        mkdir_p(pose_folder)
-        mkdir_p(rgb_folder)
-        with open(os.path.join(intrinsic_folder, format(idx, '05d')+ ".txt"), 'w') as f:
-            for k in in_cam_dict[cam_name]["K"]:
-                f.write(str(k) + " ")
+    nerfscene_folder = os.path.join(output_folder, "test")
+    mkdir_p(nerfscene_folder)
+    make_nerf_folder(test_dict, nerfscene_folder, images_folder)
 
-        W2C = np.array(in_cam_dict[cam_name]["W2C"]).reshape((4,4))
-        C2W = np.linalg.inv(W2C)
-        with open(os.path.join(pose_folder, format(idx, '05d') + ".txt"), 'w') as f:
-            for k in C2W.flatten():
-                f.write(str(k) + " ")
+    nerfscene_folder = os.path.join(output_folder, "validation")
+    mkdir_p(nerfscene_folder)
+    make_nerf_folder(valid_dict, nerfscene_folder, images_folder)
 
-        shutil.copyfile(os.path.join(images_folder, cam_name),
-                        os.path.join(rgb_folder, format(idx, '05d') + "." + cam_name.split(".")[-1]))
+    nerfscene_folder = os.path.join(output_folder, "train")
+    mkdir_p(nerfscene_folder)
+    make_nerf_folder(train_dict, nerfscene_folder, images_folder)
+
 
 if __name__ == "__main__":
     scene_folder = "F:/gkopanas/scenes/deep_blending/museum/Museum-1_nerf++/"

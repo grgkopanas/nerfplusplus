@@ -4,7 +4,10 @@ import json
 import os
 from pyquaternion import Quaternion
 import trimesh
-
+import shutil
+from os import makedirs
+from PIL import Image
+from read_write_model import Camera
 
 def parse_tracks(colmap_images, colmap_points3D):
     all_tracks = []     # list of dicts; each dict represents a track
@@ -86,16 +89,43 @@ def parse_camera_dict(colmap_cameras, colmap_images):
     return camera_dict
 
 
-def extract_all_to_dir(sparse_dir, out_dir, ext='.bin'):
-    if not os.path.exists(out_dir):
-        os.mkdir(out_dir)
+def resize_images_cameras(colmap_cameras, colmap_images, new_size, in_image_path, out_image_path):
+    makedirs(out_image_path, exist_ok=True)
+    for _, camera in colmap_cameras.items():
+        if new_size==None:
+            new_w, new_h = camera.width, camera.height
+        else:
+            new_w, new_h = new_size
 
+        old_w = camera.width
+        old_h = camera.height
+        params = np.array([camera.params[0]*(new_w/old_w), camera.params[1]*(new_h/old_h), new_w/2.0, new_h/2.0])
+        colmap_cameras[camera.id] = Camera(id=camera.id, model=camera.model,
+                                           width=new_w, height=new_h,
+                                           params=params)
+
+        image = Image.open(os.path.join(in_image_path, colmap_images[camera.id].name))
+        image_resized = image.resize((new_w, new_h))
+        image_resized.save(os.path.join(out_image_path, colmap_images[camera.id].name))
+
+def extract_all_to_dir(mvs_dir, out_dir, ext='.bin'):
+    makedirs(out_dir, exist_ok=True)
+
+    sparse_dir = os.path.join(mvs_dir, 'sparse')
     camera_dict_file = os.path.join(out_dir, 'kai_cameras.json')
     xyz_file = os.path.join(out_dir, 'kai_points.txt')
     track_file = os.path.join(out_dir, 'kai_tracks.json')
     keypoints_file = os.path.join(out_dir, 'kai_keypoints.json')
     
     colmap_cameras, colmap_images, colmap_points3D = read_model(sparse_dir, ext)
+
+    undistorted_img_dir = os.path.join(mvs_dir, 'images')
+    posed_img_dir_link = os.path.join(out_dir, 'images')
+    if os.path.exists(posed_img_dir_link):
+        shutil.rmtree(posed_img_dir_link)
+
+    resize_images_cameras(colmap_cameras, colmap_images, (900,600), undistorted_img_dir, posed_img_dir_link)
+
 
     camera_dict = parse_camera_dict(colmap_cameras, colmap_images)
     with open(camera_dict_file, 'w') as fp:
